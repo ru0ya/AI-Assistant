@@ -81,130 +81,133 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED
                 )
 
-        @action(detail=True, methods=['POST'])
-        def apply_suggestion(self, request, pk=None):
-            suggestion_id = request.data.get('suggestion_id')
-            try:
-                suggestion = Suggestion.objects.get(
-                        id=suggestion_id,
-                        document_id=pk,
-                        document__user=request.user
-                        )
-            except Suggestion.DoesNotExist:
-                return Response(
-                        {'error': 'Suggestion not found'},
-                        status=status.HTTP_404_NOT_FOUND
-                        )
-
-            document = suggestion.document
-            # apply suggestion to improved content
-            document.improved_content = document.improved_content.replace(
-                    suggestion.original_text,
-                    suggestion.improved_text
+    @action(detail=True, methods=['POST'])
+    def apply_suggestion(self, request, pk=None):
+        suggestion_id = request.data.get('suggestion_id')
+        try:
+            suggestion = Suggestion.objects.get(
+                    id=suggestion_id,
+                    document_id=pk,
+                    document__user=request.user
                     )
-            document.save()
-
-            suggestion.status = 'applied'
-            suggestion.save()
-
-            return Response(self.get_serializer(document).data)
-
-        def process_document(self, content):
-            nlp = spacy.load("en_core_web_sm")
-            doc = nlp(content)
-
-            improved_content = content
-            suggestions = []
-
-            improved_content, grammar_suggestions = self.check_grammar(
-                    doc,
-                    improved_content
+        except Suggestion.DoesNotExist:
+            return Response(
+                    {'error': 'Suggestion not found'},
+                    status=status.HTTP_404_NOT_FOUND
                     )
-            suggestions.extend(grammar_suggestions)
 
-            improved_content, style_suggestions = self.check_style(
-                    doc,
-                    improved_content
-                    )
-            suggestions.extend(style_suggestions)
+        document = suggestion.document
+        # apply suggestion to improved content
+        document.improved_content = document.improved_content.replace(
+                suggestion.original_text,
+                suggestion.improved_text
+                )
+        document.save()
 
-            return improved_content, suggestions
+        suggestion.status = 'applied'
+        suggestion.save()
 
-        def check_grammar(self, doc, content):
-            suggestions = []
+        return Response(self.get_serializer(document).data)
 
-            for token in doc:
-                if token.dep_ == "nsubj" and token.head.pos_ == "VERB":
-                    if token.morph.get("Number") != token.head.\
-                            morph.get("Number"):
-                                suggestions.append({
-                                    'original': token.sent.text,
-                                    'improved': 
-                                    self.fix_subject_verb_agreement(
-                                        token,
-                                        token.head
-                                        ),
-                                    'position': token.sent.start_char,
-                                    'type': 'grammar'
-                                    })
-            return content, suggestions
+    def process_document(self, content):
+        nlp = spacy.load("en_core_web_sm")
+        doc = nlp(content)
 
-        def check_style(self, doc, content):
-            suggestions = []
-            
-            if self.is_passive_voice(doc):
+        improved_content = content
+        suggestions = []
+
+        improved_content, grammar_suggestions = self.check_grammar(
+                doc,
+                improved_content
+                )
+        suggestions.extend(grammar_suggestions)
+
+        improved_content, style_suggestions = self.check_style(
+                doc,
+                improved_content
+                )
+        suggestions.extend(style_suggestions)
+
+        return improved_content, suggestions
+
+    def fix_subject_verb_agreement(
+
+
+    def check_grammar(self, doc, content):
+        suggestions = []
+
+        for token in doc:
+            if token.dep_ == "nsubj" and token.head.pos_ == "VERB":
+                if token.morph.get("Number") != token.head.\
+                        morph.get("Number"):
+                            suggestions.append({
+                                'original': token.sent.text,
+                                'improved': 
+                                self.fix_subject_verb_agreement(
+                                    token,
+                                    token.head
+                                    ),
+                                'position': token.sent.start_char,
+                                'type': 'grammar'
+                                })
+        return content, suggestions
+
+    def check_style(self, doc, content):
+        suggestions = []
+        
+        if self.is_passive_voice(doc):
+            suggestions.append({
+                'original': doc.text,
+                'improved': self.suggest_active_voice(doc),
+                'position': 0,
+                'type': 'style'
+                })
+
+        return content, suggestions
+
+    def check_clarity(self, doc, content):
+        suggestions = []
+
+        for sent in doc.sents:
+            if len(sent.text.split()) > 30:
                 suggestions.append({
-                    'original': doc.text,
-                    'improved': self.suggest_active_voice(doc),
-                    'position': 0,
-                    'type': 'style'
+                    'original': sent.text,
+                    'improved': self.split_long_sentence(sent.text),
+                    'position': sent.start_char,
+                    'type': 'clarity'
                     })
 
-            return content, suggestions
+        return content, suggestions
 
-        def check_clarity(self, doc, content):
-            suggestions = []
+    def extract_content(self, file):
+        if file.name.endswith('.txt'):
+            return file.read().decode('utf-8')
+        elif file.name.endswith('.docx'):
+            doc = docx.Document(file)
+            return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
+        elif file.name.endswith('.pdf'):
+            pdf_reader = PyPDF2.PdfReader(file)
+            return ''.join(page.extract_text() for page in pdf_reader.pages)
 
-            for sent in doc.sents:
-                if len(sent.text.split()) > 30:
-                    suggestions.append({
-                        'original': sent.text,
-                        'improved': self.split_long_sentence(sent.text),
-                        'position': sent.start_char,
-                        'type': 'clarity'
-                        })
+        return ''
 
-            return content, suggestions
+    @action(detail=True, methods=['POST'])
+    def export(self, request, pk=None):
+        document = self.get_object()
 
-        def extract_content(self, file):
-            if file.name.endswith('.txt'):
-                return file.read().decode('utf-8')
-            elif file.name.endswith('.docx'):
-                doc = docx.Document(file)
-                return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-            elif file.name.endswith('.pdf'):
-                pdf_reader = PyPDF2.PdfReader(file)
-                return ''.join(page.extract_text() for page in pdf_reader.pages)
+        # create new word document
+        doc = docx.Document(settings.WORD_TEMPLATE_PATH)
+        doc.add_paragraph(document.improved_content)
 
-            return ''
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
 
-        @action(detail=True, methods=['POST'])
-        def export(self, request, pk=None):
-            document = self.get_object()
+        response = Response(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats\
+                        -officedocument.wordprocessingml.document'
+                        )
+        response['Content-Disposition'] = f'attachment; filename="{document.title}"'
 
-            # create new word document
-            doc = docx.Document(settings.WORD_TEMPLATE_PATH)
-            doc.add_paragraph(document.improved_content)
-
-            buffer = BytesIO()
-            doc.save(buffer)
-            buffer.seek(0)
-
-            response = Response(
-                    buffer.getvalue(),
-                    content_type='application/vnd.openxmlformats\
-                            -officedocument.wordprocessingml.document'
-                            )
-            response['Content-Disposition'] = f'attachment; filename="{document.title}"'
-
-            return response
+        return response

@@ -17,6 +17,10 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include, re_path
 from rest_framework import permissions
+from rest_framework_simplejwt.views import (
+        TokenRefreshView,
+        TokenVerifyView
+        )
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.views.decorators.csrf import csrf_exempt
@@ -36,6 +40,16 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('user-auth/', include('dj_rest_auth.urls')),
     path('user/registration/', include('dj_rest_auth.registration.urls')),
+    path(
+        'user/token/refresh/',
+        TokenRefreshView.as_view(),
+        name='token_refresh'
+        ),
+    path(
+        'user/token/verify/',
+        TokenVerifyView.as_view(),
+        name='token_verify'
+        ),
     path('', include('doc_assistant.urls')),
 
 

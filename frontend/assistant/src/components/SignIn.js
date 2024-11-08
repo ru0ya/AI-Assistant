@@ -1,82 +1,173 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import apiUrl from '../config'
+import { Alert, AlertDescription, AlertTitle } from './CustomComponents';
+import { Button } from './CustomComponents';
+import { Input } from './CustomComponents';
+import apiUrl from '../config';
 
-const SignIn = () => {
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-  });
-  const [error, setError] = useState('');
+const SignInComponent = () => {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
-
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
-    try {
-      const response = await axios.post(`${apiUrl}/auth/jwt/create/`, formData);
-      const { access, refresh } = response.data;
 
-      localStorage.setItem('access_token', access);
-	  localStorage.setItem('refresh_token', refresh);
-      
+    try {
+      const response = await fetch(`${apiUrl}/user-auth/login/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        localStorage.setItem('accessToken', data.access);
+		// localStorage.setItem('refreshToken', data.refresh);
+		setupAuthHeader(data.access_token);
+
+        navigate('/documents');
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail);
+      }
+    } catch (err) {
+      setError('An error occurred. Please try again later.');
+    }
   };
 
+
+  const refreshToken = async () => {
+	  try {
+		  const refresh = localStorage.getItem('refreshToken');
+		  const response = await fetch(`${apiUrl}/user-auth/token/refresh/`, {
+			  method: 'POST',
+			  headers: {
+				  'Content-Type': 'application/json',
+			  },
+			  body: JSON.stringify({
+				  refresh,
+			  }),
+		  });
+
+		  if (response.ok) {
+			  const data = await response.json();
+			  localStorage.setItem('accessToken', data.access);
+			  setupAuthHeader(data.access);
+		  } else {
+			  handleLogout();
+			  throw new Error('Refresh token invalid');
+		  }
+	  } catch (error) {
+		  console.error('Error refreshing token:', error);
+		  handleLogout();
+		  throw error;
+	  }
+  };
+
+  const handleLogout = () => {
+	  localStorage.removeItem('accessToken');
+	  localStorage.removeItem('refreshToken');
+	  navigate('/sign-in');
+  };
+
+  const setupAuthHeader = (token) => {
+	  if (window.axios) {
+		  window.axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+	  }
+  };
+
+    React.useEffect(() => {
+    if (window.axios) {
+      window.axios.interceptors.response.use(
+        (response) => response,
+        async (error) => {
+          const originalRequest = error.config;
+          
+          if (error.response.status === 401 && !originalRequest._retry) {
+            originalRequest._retry = true;
+            try {
+              const newToken = await refreshToken();
+              originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+              return window.axios(originalRequest);
+            } catch (refreshError) {
+              return Promise.reject(refreshError);
+            }
+          }
+          return Promise.reject(error);
+        }
+      );
+    }
+  }, []);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-r from-red-700 via-green-800 to-red-700 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-white">Sign in to your account</h2>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <input type="hidden" name="remember" value="true" />
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="username" className="sr-only">Email</label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Email"
-                value={formData.username}
-                onChange={handleChange}
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">Password</label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-              />
-            </div>
+    <div className="flex justify-center items-center h-screen">
+      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+        <h2 className="text-2xl font-bold mb-4">Sign In</h2>
+
+        {error && (
+          <Alert variant="danger">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label htmlFor="username" className="block font-medium mb-1">
+              Username
+            </label>
+            <Input
+              id="username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
           </div>
-          <div>
-            <button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-[#232526] hover:bg-[#0a0d0e] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#232526]"
-            >
+
+          <div className="mb-4">
+            <label htmlFor="password" className="block font-medium mb-1">
+              Password
+            </label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="flex justify-between items-center">
+            <Button type="submit" className="bg-blue-500 hover:bg-blue-600 text-white">
               Sign In
+            </Button>
+            <button
+              type="button"
+              className="text-blue-500 hover:text-blue-600"
+              onClick={() => navigate('/sign-up')}
+            >
+              Don't have an account? Sign Up
             </button>
           </div>
         </form>
-        {error && <p className="mt-2 text-center text-sm text-red-600">{error}</p>}
+
+        <div className="mt-4 text-center">
+          <a href="#" className="text-blue-500 hover:text-blue-600">
+            Forgot Password?
+          </a>
+        </div>
       </div>
     </div>
   );
 };
 
-export default SignIn;
+export default SignInComponent;

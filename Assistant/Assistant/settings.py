@@ -27,8 +27,15 @@ SECRET_KEY = 'django-insecure-i4800k3&9eg&2j8=*2d_ii%h8^@t#paa7+a)#84@8kgs*jq%#l
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000"
+        ]
 
+CSRF_TRUSTED_ORIGINS = ["http://localhost:3000"]
+
+CORS_ORIGIN_ALLOW_ALL = True
+
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 
@@ -40,8 +47,11 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites',
+    'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'dj_rest_auth',
     'drf_yasg',
     'allauth',
@@ -52,6 +62,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -137,13 +148,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 SITE_ID = 1
 
-REST_USE_JWT = True
+REST_AUTH = {
+        'USE_JWT': True,
+        'JWT_AUTH_COOKIE': 'jwt-auth',
+        }
 
 REST_FRAMEWORK = {
         'DEFAULT_AUTHENTICATION_CLASSES': (
             # 'rest_framework.authentication.TokenAuthentication',
             'rest_framework_simplejwt.authentication.JWTAuthentication',
-            'rest_framework.authentication.SessionAuthentication',
+            # 'rest_framework.authentication.SessionAuthentication',
             ),
         'DEFAULT_FILTER_BACKENDS': (
             'django_filters.rest_framework.DjangoFilterBackend',
@@ -162,8 +176,8 @@ SPECTACULAR_SETTINGS = {
         }
 
 SIMPLE_JWT = {
-        'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-        'REFRESH_TOKEN_LIFETIME': timedelta(days=14),
+        'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+        'REFRESH_TOKEN_LIFETIME': timedelta(days=2),
         'ROTATE_REFRESH_TOKENS': True,
         'BLACKLIST_AFTER_ROTATION': True,
         'UPDATE_LAST_LOGIN': False,
