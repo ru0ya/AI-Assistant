@@ -105,10 +105,11 @@ const SignUpComponent = () => {
             <Input
               id="password1"
               type="password"
+	          placeholder="Password"
+	          autoComplete="new-password"
               value={password1}
               onChange={(e) => setPassword1(e.target.value)}
               required
-	          autoComplete="new-password"
             />
           </div>
 

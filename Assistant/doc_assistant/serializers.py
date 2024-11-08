@@ -70,6 +70,15 @@ class DocumentUploadSerializer(serializers.Serializer):
                     )
         return value
 
+    class Meta:
+        model = Document
+        fields = [
+                'document',
+                'title',
+                'original_content',
+                'file_type'
+                ]
+
 
 class UserDocumentListSerializer(serializers.Serializer):
     documents = DocumentSerializer(many=True, read_only=True)

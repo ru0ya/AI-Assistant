@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Upload } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardContent } from './CustomComponents';
 import { Button } from './CustomComponents';
 import { Alert, AlertTitle, AlertDescription } from './CustomComponents';
@@ -10,6 +11,7 @@ const DocumentUpload = () => {
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const navigate = useNavigate();
 
   const handleUpload = async () => {
     if (!file) return;
@@ -40,8 +42,8 @@ const DocumentUpload = () => {
 		  throw new Error(errorData.detail || 'Upload failed');
 	  }
 
-
       setFile(null);
+	  navigate('/document-comparison/:id');
     } catch (err) {
       setError(err.message);
     } finally {

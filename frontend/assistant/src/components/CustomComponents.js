@@ -22,6 +22,10 @@ export const CardContent = ({ children }) => (
 	<div className="py-4">{children}</div>
 );
 
+export const ScrollArea = ({ children, className = '' }) => (
+	<div className={`overflow-y-auto ${className}`}>{children}</div>
+);
+
 export const Button = ({ children, onClick, disabled, className }) => (
 	<button
 	  onClick={onClick}

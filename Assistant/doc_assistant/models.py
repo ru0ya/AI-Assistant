@@ -5,6 +5,11 @@ from django.contrib.auth.models import User
 class Document(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
+    document = models.FileField(
+            upload_to='documents/', 
+            null=True,
+            blank=True
+            )
     original_content = models.TextField()
     improved_content = models.TextField(null=True, blank=True)
     file_type = models.CharField(max_length=10)
