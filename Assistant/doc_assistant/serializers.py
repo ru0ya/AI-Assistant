@@ -70,14 +70,13 @@ class DocumentUploadSerializer(serializers.Serializer):
                     )
         return value
 
+    def create(self, validated_data):
+        document = validated_data['document']
+        return {'document': document}
+
     class Meta:
         model = Document
-        fields = [
-                'document',
-                'title',
-                'original_content',
-                'file_type'
-                ]
+        fields = ['document']
 
 
 class UserDocumentListSerializer(serializers.Serializer):

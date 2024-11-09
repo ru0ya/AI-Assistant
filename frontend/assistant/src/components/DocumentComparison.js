@@ -18,39 +18,69 @@ const DocumentComparison = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-	  const fetchComparisonData = async () => {
-		  try {
-			  const accessToken = localStorage.getItem('accessToken');
-			  if (!accessToken) {
-				  throw new Error('No authentication token found.Please login again.');
-			  }
+    const checkAuthAndFetchData = async () => {
+      try {
+        const accessToken = localStorage.getItem('accessToken');
+        if (!accessToken) {
+          // Store the current URL for redirect after login
+          localStorage.setItem('redirectAfterLogin', `/document-comparison/${id}`);
+          navigate('/signin');
+          return;
+        }
 
-			  const response = await fetch(`${apiUrl}/documents/${id}/compare/`, {
-				  headers: {
-					  'Authorization': `Bearer ${accessToken}`
-				  }
-			  });
+        const response = await fetch(`${apiUrl}/documents/${id}/compare/`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
 
-			  if (!response.ok) {
-				  throw new Error('Failed to fetch comparison data');
-			  }
+        if (response.status === 401) {
+          // Token is invalid or expired
+          localStorage.removeItem('accessToken');
+          localStorage.setItem('redirectAfterLogin', `/document-comparison/${id}`);
+          navigate('/signin');
+          return;
+        }
 
-			  const data = await response.join();
-			  setOriginalText(data.original_content || '');
-			  setImprovedText(data.improved_content || '');
-		  } catch (err) {
-			  setError(err.message);
-			  console.error('Error fetching comparison data:', err);
-		  } finally {
-			  setLoading(false);
-		  }
-	  };
+        if (!response.ok) {
+          throw new Error(
+            response.status === 404 
+              ? 'Document not found' 
+              : 'Failed to fetch comparison data'
+          );
+        }
 
-	  if (id) {
-		  fetchComparisonData();
-	  }
-  }, [id]);
+        const data = await response.json(); 
+        
+        if (!data.original_content && !data.improved_content) {
+          throw new Error('No document content available');
+        }
 
+        setOriginalText(data.original_content || '');
+        setImprovedText(data.improved_content || '');
+      } catch (err) {
+        setError(err.message);
+        console.error('Error fetching comparison data:', err);
+        
+        // Handle specific error cases
+        if (err.message.includes('authentication') || err.message.includes('login')) {
+          navigate('/signin');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (id) {
+      checkAuthAndFetchData();
+    } else {
+      setError('No document ID provided');
+      setLoading(false);
+    }
+  }, [id, navigate]);
+
+  // Rest of your component code remains the same...
+  
   const highlightDifferences = (text1 = '', text2 = '') => {
     if (!text1 || !text2) return text2;
     

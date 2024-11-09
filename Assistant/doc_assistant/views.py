@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 import spacy
 from textblob import TextBlob
 from langdetect import detect
@@ -23,27 +24,137 @@ from doc_assistant.models import (
         )
 
 
-class DocumentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
-    serializer_class = DocumentSerializer
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # load spacy model with all pipeline components needed
+class DocumentProcessor:
+    """
+    Handles all document processing logic: extraction and improvement
+    """
+    def __init__(self):
         self.nlp = spacy.load("en_core_web_sm", disable=['ner'])
-
         if 'senter' not in self.nlp.pipe_names:
             self.nlp.add_pipe('sentencizer')
 
+        # setup matchers
         self.matcher = Matcher(self.nlp.vocab)
         self.phrase_matcher = PhraseMatcher(self.nlp.vocab)
 
-        # add passive voice pattern
         passive_pattern = [
                 {'DEP': 'auxpass'},
                 {'TAG': 'VBN'}
                 ]
+        
         self.matcher.add('Passive', [passive_pattern])
+
+    def extract_content(self, file):
+        """
+        Extract content from various file formats with enhanced error handling
+        """
+        if not file:
+            raise ValueError("No file provided")
+
+        file_extension = file.name.split('.')[-1].lower()
+
+        try:
+            if file_extension == 'txt':
+                content = file.read().decode('utf-8', errors='replace')
+            elif file_extension == 'docx':
+                doc = docx.Document(file)
+                paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+                content = '\n\n'.join(paragraphs)
+            elif file_extension == 'pdf':
+                pdf_reader = PyPDF2.PdfReader(file)
+                text_parts = []
+                for page in pdf_reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        text_parts.append(text.strip())
+                content = '\n\n'.join(text_parts)
+            else:
+                raise ValueError(f"Unsupported file type: {file_extension}")
+
+            return self.validate_content(content)
+
+        except Exception as e:
+            raise ValueError(f"Error extracting content: {str(e)}")
+
+    def validate_content(self, content):
+        """
+        Validate content length and language
+        """
+        if not content or len(content.strip()) == 0:
+            raise ValueError("Extracted content is empty")
+
+        try:
+            if detect(content) != 'en':
+                raise ValueError("Only English documents are supported")
+        except Exception as e:
+            raise ValueError(f"Language detection failed: {str(e)}")
+
+        return content.strip()
+
+    def improve_document(self, content):
+        """
+        Improve document content using NLP techniques
+        """
+        # initial spell check and basic grammar correction
+        blob = TextBlob(content)
+        corrected_text = str(blob.correct())
+
+        # advanced processinf with SpaCy
+        doc = self.nlp(corrected_text)
+        improved_sentences = []
+
+        for sent in doc.sents:
+            improved_sent = self.improve_sentence(sent)
+            improved_sentences.append(improved_sent)
+
+        improved_text = ' '.join(improved_sentences)
+        return improved_text
+
+    def improve_sentence(self, sent):
+        """
+        Apply various improvements to a single sentence
+        """
+        text = sent.text.strip()
+
+        # convert passive voice to active
+        matches = self.matcher(sent)
+        if matches:
+            text = self.convert_to_active(sent)
+
+        # fix capitalization
+        if text and not text[0].isupper():
+            text = text[0].upper() + text[1:]
+
+        # ensure proper spacing and punctuation
+        text = ' '.join(text.split())
+
+        return text + ' '
+
+    def convert_to_active(self, sent):
+        """
+        Convert passive voice to active voice
+        """
+        subject, agent, verb = None
+
+        for token in sent:
+            if token.dep_ == "nsubjpass":
+                subject = token
+            elif token.dep_ == "agent":
+                agent = list(token.children)[0] if list(token.children) else None
+            elif token.dep_ == "auxpass":
+                verb = token.head
+
+        if subject and verb:
+            if agent:
+                return f"{agent.text} {verb.text} {subject.text}"
+
+        return sent.text
+
+
+class DocumentViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DocumentSerializer
+    document_processor = DocumentProcessor()
 
     def get_queryset(self):
         return Document.objects.filter(user=self.request.user)
@@ -53,161 +164,42 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return DocumentUploadSerializer
         return DocumentSerializer
 
-    """
-    @action(detail=False, methods=['GET'])
-    def list_user_documents(self, request):
-        serializer = UserDocumentListSerializer(context={'request': request})
-        return Response(serializer.data)
-    """
-
     @action(detail=False, methods=['POST'])
     def upload(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer = DocumentUploadSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
 
-        file = serializer.validated_data['document']
-        content = self.extract_content(file)
-
-        if not content:
+            file = serializer.validated_data['document']
+            content = self.document_processor.extract_content(file)
+            document = self.create_document(content, file.name)
             return Response(
-                    {'error': 'Unable to extract content from file'},
+                    DocumentSerializer(document).data,
+                    status=status.HTTP_201_CREATED
+                    )
+        except Exception as e:
+            print(f"Upload error: {str(e)}")
+            return Response(
+                    {'error': f'Upload failed: {str(e)}'},
                     status=status.HTTP_400_BAD_REQUEST
                     )
-
-        document = self.create_and_process_document(content, file.name)
-
-        return Response(
-                self.get_serializer(document).data,
-                status=status.HTTP_201_CREATED
-                )
-
-    def create_and_process_document(self, content, filename):
-        blob = detect(content)
-        if blob != 'en':
-            raise ValueError('Only English documents are supported')
-
+       
+    def create_document(self, content, filename):
+        """
+        Create and process a new document
+        """
         document = Document.objects.create(
                 user=self.request.user,
                 title=filename,
                 original_content=content,
-                file_type=filename.split('.')[-1]
+                file_type=filename.split('.')[-1].lower()
                 )
 
-        improved_content = self.improve_document(content)
+        improved_content = self.document_processor.improve_document(content)
         document.improved_content = improved_content
         document.save()
 
         return document
-    
-    def improve_document(self, content):
-        """Improve document using both TextBlob and SpaCy"""
-        blob = TextBlob(content)
-
-        # correct spelling and basic grammar
-        corrected_text = str(blob.correct())
-
-        # use SpaCy for advanced processing
-        doc = self.nlp(corrected_text)
-
-        # convert doc into sentences for processing
-        sentences = list(doc.sents)
-        improved_sentences = []
-
-        for sent in sentences:
-            improved_sent = self.improve_sentence(sent)
-            improved_sentences.append(improved_sent)
-
-        # join sentences with proper spacing
-        improved_text = ''.join(improved_sentences)
-
-        final_blob = TextBlob(improved_text)
-        return str(final_blob)
-
-    def improve_sentence(self, sent):
-        """Improve individual sentences using SpaCy's analysis"""
-        text = sent.text
-
-        # use SpaCy's analysis for improvements
-        root = sent.root
-
-        # handle passive voice
-        if any(token.dep_ == 'auxpass' for token in sent):
-            text = self.convert_to_active(sent)
-
-        # fix subject verb agreement
-        for token in sent:
-            if token.dep_ == "nsubj" and token.head.pos_ == "VERB":
-                text = self.fix_agreement(token, token.head, text)
-
-        text = text[0].upper() + text[1:]
-
-        return text
-
-    def convert_to_active(self, sent):
-        """
-        Converts passive voice to active voice using SpaCy's\
-                dependency parsing
-        """
-        subject = None
-        verb = None
-        agent = None
-
-        for token in sent:
-            if token.dep_ == "nsubjpass":
-                subject = token
-            elif token.dep_ == "auxpass":
-                verb = token.head
-            elif token.dep_ == "agent":
-                agent = token.children.__next__()
-
-        if subject and verb:
-            if agent:
-                return f"{agent.text} {verb.text} {subject.text}"
-            else:
-                return sent.text
-
-        return sent.text
-
-    def fix_agreement(self, subject, verb, text):
-        """
-        Fix subject-verb agreement using SpaCy's morphological analysis
-        """
-        subj_num = subject.morph.get("Number", [""])[0]
-        verb_num = verb.morph.get("Number", [""])[0]
-
-        if subj_num and verb_num and subj_num != verb_num:
-            bob = TextBlob(text)
-            return str(blob.correct())
-
-        return text
-        
-    def extract_content(self, file):
-        """
-        Extract text from various file formats
-        """
-        try:
-            if file.name.endswith('.txt'):
-                return file.read().decode('utf-8', errors='replace')
-            elif file.name.endswith('.docx'):
-                doc = docx.Document(file)
-                paragraphs = [p.text.strip() for p in doc.paragraphs if
-                        p.text.strip()]
-                return '\n\n'.join(paragraphs)
-            elif file.name.endswith('.pdf'):
-                pdf_reader = PyPDF2.PdfReader(file)
-
-                # extract text from each page
-                text_parts = []
-                for page in pdf_reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        text_parts.append(text.strip())
-                return '\n\n'.join(text_parts)
-
-            return ''
-        except Exception as e:
-            print(f"Error extracting content: {str(e)}")
-            return ''
 
     @action(detail=True, methods=['GET'])
     def compare(self, request, pk=None):
@@ -221,36 +213,42 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def export(self, request, pk=None):
         document = self.get_object()
 
-        # create new word document
-        doc = docx.Document(settings.WORD_TEMPLATE_PATH)
+        try:
+            # create new word document
+            doc = docx.Document(settings.WORD_TEMPLATE_PATH)
 
-        # add improved content
-        doc.add_paragraph(document.improved_content)
+            # add improved content
+            doc.add_paragraph(document.improved_content)
 
-        # add analysis
-        doc.aadd_paragraph("\nDocument Analysis:")
+            # add analysis
+            doc.add_paragraph("\nDocument Analysis:", style='Heading 1')
 
-        # use TextBlob for sentiment analysis
-        blob = TextBlob(document.improved_content)
-        sentiment = blob.sentiment
-        doc.add_paragraph(
-            f"Sentiment: {'Positive' if sentiment.polarity > 0 else 'Negative' if sentiment.polarity < 0 else 'Neutral'}")
+            # sentiment analysis
+            blob = TextBlob(document.improved_content)
+            sentiment = blob.sentiment
+            sentiment_text = 'Positive' if sentiment.polarity > 0 else 'Negative' if sentiment.polarity < 0 else 'Neutral'
+            doc.add_paragraph(f"Sentiment: {sentiment_text}")
 
-        # use SpaCy for structural analysis
-        spacy_doc = self.nlp(document.improved_content)
-        doc.add_paragraph(f"Sentences: {len(list(spacy_doc.sents))}")
-        doc.add_paragraph(
-            f"Average sentence length: {len(spacy_doc) / len(list(spacy_doc.sents)):.lf} words")
+            # structural analysis
+            spacy_doc = self.document_processor.nlp(document.improved_content)
+            sentences = list(spacy_doc.sents)
+            doc.add_paragraph(f"Total Sentences: {len(sentences)}")
+            doc.add_paragraph(f"Average Sentence Length: {len(spacy_doc) / len(sentences):.lf} words")
 
-        buffer = BytesIO()
-        doc.save(buffer)
-        buffer.seek(0)
+            # save to buffer
+            buffer = BytesIO()
+            doc.save(buffer)
+            buffer.seek(0)
 
-        response = Response(
-                buffer.getvalue(),
-                content_type='application/vnd.openxmlformats\
-                        -officedocument.wordprocessingml.document'
-                        )
-        response['Content-Disposition'] = f'attachment; filename="{document.title}"'
+            response = Response(
+                    buffer.getvalue(),
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    )
+            response['Content-Disposition'] = f'attachment; filename="{document.title}_improved.docx"'
+            return response
 
-        return response
+        except Exception as e:
+            return Response(
+                    {'error': f'Export failed: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
