@@ -36,7 +36,6 @@
 
     pip3 install -r requirements.txt
     
-    # Frontend dependencies (example for Node.js)
     cd frontend/assistant
     npm install
     ```
@@ -91,8 +90,8 @@ Each endpoint includes:
 - **Parameters**: List of parameters, both required and optional.
 - **Response**: Example JSON response for success and error cases.
 - **Status Codes**: Expected HTTP status codes for each endpoint.
-- (Swagger Docs)[http://127.0.0.1:8000/swagger/]
-- (Redocs)[http://127.0.0.1:8000/redoc/#tag/user-auth/operation/user-auth_login_create]
+- [Swagger Docs](http://127.0.0.1:8000/swagger/)
+- [Redocs](http://127.0.0.1:8000/redoc/#tag/user-auth/operation/user-auth_login_create)
 
 ---
 
