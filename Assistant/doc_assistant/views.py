@@ -9,7 +9,7 @@ from langdetect import detect
 from spacy.matcher import Matcher, PhraseMatcher
 from django.conf import settings
 import docx
-import PyPDF2
+from pypdf import PdfReader
 from io import BytesIO
 
 from doc_assistant.serializers import (
@@ -61,7 +61,7 @@ class DocumentProcessor:
                 paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
                 content = '\n\n'.join(paragraphs)
             elif file_extension == 'pdf':
-                pdf_reader = PyPDF2.PdfReader(file)
+                pdf_reader = PdfReader(file)
                 text_parts = []
                 for page in pdf_reader.pages:
                     text = page.extract_text()

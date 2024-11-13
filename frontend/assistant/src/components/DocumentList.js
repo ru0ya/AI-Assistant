@@ -18,7 +18,7 @@ const DocumentList = () => {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch(`${apiUrl}/documents/list_user_documents/`, {
+      const response = await fetch(`${apiUrl}/documents/`, {
         headers: {
 		  'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
