@@ -6,6 +6,7 @@ import SignInComponent from './components/SignIn';
 import DocumentComparison from './components/DocumentComparison';
 import DocumentUpload from './components/DocumentUpload';
 import DocumentList from './components/DocumentList';
+import DocumentExport from './components/DocumentExport';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/documents" element={<DocumentUpload />} />
 	    <Route path="/document-comparison/:id" element={<DocumentComparison />} />
         <Route path="/documents/list" element={<DocumentList />} />
+		<Route path="/document-export/:id" element={<DocumentExport />} />
         <Route path="*" element={<SignUpComponent />} />
       </ReactRoutes>
     </Router>

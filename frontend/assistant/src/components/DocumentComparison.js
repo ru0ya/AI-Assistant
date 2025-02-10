@@ -4,7 +4,8 @@ import { Card, CardHeader, CardTitle, CardContent } from './CustomComponents';
 import { ScrollArea } from './CustomComponents';
 import { Alert, AlertDescription } from './CustomComponents';
 import { Button } from './CustomComponents';
-import { ArrowLeftRight, Maximize2, Minimize2, Loader2 } from 'lucide-react';
+import { ArrowLeftRight, Maximize2, Minimize2, Loader2, Download } from 'lucide-react';
+// import DocumentExport from './DocumentExport';
 import apiUrl from '../config';
 
 const DocumentComparison = () => {
@@ -78,8 +79,6 @@ const DocumentComparison = () => {
       setLoading(false);
     }
   }, [id, navigate]);
-
-  // Rest of your component code remains the same...
   
   const highlightDifferences = (text1 = '', text2 = '') => {
     if (!text1 || !text2) return text2;
@@ -138,11 +137,23 @@ const DocumentComparison = () => {
     );
   }
 
+const handleExportClick = () => {
+	navigate(`/document-export/${id}`);
+};
+
   return (
     <Card className={`${fullScreen ? 'fixed inset-4 z-50' : 'w-full'}`}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
         <CardTitle className="text-xl font-bold">Document Comparison</CardTitle>
         <div className="flex gap-2">
+	     <Button
+	        variant="outline"
+	        size="sm"
+	        onClick={handleExportClick}
+	     >
+	       <Download className="h-4 w-4 mr-2" />
+	         Export
+	     </Button>
           <Button
             variant="outline"
             size="sm"

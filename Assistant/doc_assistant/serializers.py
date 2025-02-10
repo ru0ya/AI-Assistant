@@ -77,13 +77,3 @@ class DocumentUploadSerializer(serializers.Serializer):
     class Meta:
         model = Document
         fields = ['document']
-
-
-class UserDocumentListSerializer(serializers.Serializer):
-    documents = DocumentSerializer(many=True, read_only=True)
-
-    def to_representation(self, instance):
-        user = self.context['request'].user
-        documents = Document.objects.filter(user=user)
-        
-        return {'documents': DocumentSerializer(documents, many=True).data}

@@ -16,7 +16,6 @@ from doc_assistant.serializers import (
         DocumentSerializer,
         SuggestionSerializer,
         DocumentUploadSerializer,
-        UserDocumentListSerializer
         )
 from doc_assistant.models import (
         Document,
@@ -134,7 +133,9 @@ class DocumentProcessor:
         """
         Convert passive voice to active voice
         """
-        subject, agent, verb = None
+        subject = None
+        agent = None
+        verb = None
 
         for token in sent:
             if token.dep_ == "nsubjpass":
